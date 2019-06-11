@@ -196,7 +196,7 @@ class VggVisualizer:
 		
 		fig = plt.figure(1, figsize=(10, 6))
 		fig.suptitle('class activation map, top 4', fontsize=15)
-		grid = ImageGrid(fig, 111, nrows_ncols=(2, 2), axes_pad=(0.05, 0.3))
+		grid = ImageGrid(fig, 111, nrows_ncols=(4, 2), axes_pad=(2, 0.3))
 		
 		for i in range(4):
 			output = self.model(image)
@@ -221,12 +221,14 @@ class VggVisualizer:
 			#heatmap[heatmap < 0.6] = 0
 			heatmap = 255-np.uint8(255*heatmap)
 			heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
-
+			grid[2*i].set_title('Heatmap for: ' + self.labels[indexes[i]])
+			grid[2*i].imshow(heatmap)
+			
 			superimposed_img = heatmap*0.4 + imageAlt
 			superimposed_img = superimposed_img.astype(int)
 
-			grid[i].set_title(self.labels[indexes[i]])
-			grid[i].imshow(superimposed_img)
+			grid[2*i+1].set_title(self.labels[indexes[i]])
+			grid[2*i+1].imshow(superimposed_img)
 		plt.show()
 		hook_fw.remove()
 		hook_bck.remove()
@@ -268,6 +270,7 @@ class VggVisualizer:
 			self.model.zero_grad()
 			optimizer.zero_grad()
 			output = subnet(image)
+			#output = output.clamp(min=0)
 			loss = -output.norm()
 			loss.backward()
 			optimizer.step()
@@ -333,7 +336,7 @@ def deepDreamConv(vggVis, image_url):
 
 	i = 0
 	for layer in layers:
-		img = vggVis.deepDream(layer, image_url)
+		img = vggVis.deepDream(layer, image_url, iterations=40)
 		grid[i].imshow(img)
 		i += 1
 	plt.show()
