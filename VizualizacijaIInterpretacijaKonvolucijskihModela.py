@@ -64,10 +64,10 @@ class VggVisualizer:
 		fig.suptitle('class model visualization ' + object, fontsize=15)
 		grid = ImageGrid(fig, 111, nrows_ncols=(2, 2), axes_pad=(0.05, 0.3))
 
-		lr = 0.05
+		lr = 0.08
 		optimizer = optim.SGD([image], lr=lr, momentum=0.9)
 		
-		for i in range(1, 81):
+		for i in range(1, 61):
 			optimizer.zero_grad()
 			self.model.zero_grad()
 			prediction = self.model(image)
@@ -75,31 +75,35 @@ class VggVisualizer:
 			#print(F.softmax(prediction, dim=1)[0][labelIndex])
 			#score = prediction[0][labelIndex]
 			
-			grad_map = torch.zeros(prediction.shape, dtype=torch.float).to(self.device)
-			grad_map[0][labelIndex] = -1
+			loss = -(prediction[0][labelIndex])
 			
-			prediction.backward(grad_map)
+			loss.backward()
+			#grad = optimizer.param_groups[0]['params'][0].grad
+			#optimizer.param_groups[0]['params'][0].grad = grad.clamp(min=grad.clamp(min=0).mean().cpu().item())
 			optimizer.step()
 			#print(image.grad.data.shape)
-			if i%20 == 0:
-				grid[int(i/20-1)].set_title(str(i) + ' iterations')
-				imshow(grid[int(i/20-1)], image, False)
+			if i%15 == 0:
+				grid[int(i/15-1)].set_title(str(i) + ' iterations')
+				imshow(grid[int(i/15-1)], image, False)
 			
 		plt.show()
 		
-	def saliencyMap(self, image_url, gray=True):
+	def saliencyMap(self, image_url, gray=True, n=1):
 		image = self.getAndPreprocessImage(image_url)
 		image.requires_grad = True
 		
 		self.model.zero_grad()
 		prediction = self.model(image)
-		index = prediction.argmax().cpu().item()
+		
+		percentages = F.softmax(prediction, dim=1)[0]
+		topres = torch.topk(prediction, n)
+		index = topres[1].cpu().detach().numpy()[0][n-1]
 		
 		prediction[0][index].backward()
 		
 		fig = plt.figure(1, figsize=(10, 6))
 		fig.suptitle('saliency map ' + self.labels[index], fontsize=15)
-		grid = ImageGrid(fig, 111, nrows_ncols=(2, 2), axes_pad=(0.05, 0.3)) 
+		grid = ImageGrid(fig, 111, nrows_ncols=(1, 2), axes_pad=(0.05, 0.3)) 
 		imshow(grid[0], image)
 		
 		data = image.grad.data
@@ -108,53 +112,42 @@ class VggVisualizer:
 			data = self.convertToGrayByMax(data.squeeze(dim=0))
 			
 		im1 = data.clamp(min=0)
-		im2 = data.clamp(min=0.03)
-		im3 = data.clamp(min=0.05)
 		
-		grid[1].set_title('clamp min=0')
+		grid[1].set_title('%s is %d. best prediction with percentage %.1f' % (self.labels[index], n, percentages[index]*100))
 		imshow(grid[1], im1, False, gray)
-		grid[2].set_title('clamp min=0.03')
-		imshow(grid[2], im2, False, gray)
-		grid[3].set_title('clamp min=0.05')
-		imshow(grid[3], im3, False, gray)
 		plt.show()
 		
 	def guidedBackpropagation(self, image_url, gray=False):
 		self.newImg = None
-		self.fmaps = []
+		#self.fmaps = []
 		
 		def first_layer_hook_fn(module, grad_out, grad_in):
-			self.newImg = grad_out[0] 
+			self.newImg = grad_out[0]
 			
-		def forward_hook_fn(module, input, output):
-			self.fmaps.append(output)
+		#def forward_hook_fn(module, input, output):
+			#self.fmaps.append(output)
 			
 		def backward_hook_fn(module, grad_out, grad_in):
 			new_grad_out = grad_out[0].clamp(min=0)
-			fgrad = self.fmaps[-1]
-			fgrad[fgrad > 0] = 1
-			new_grad_out = new_grad_out * fgrad
-			del self.fmaps[-1]
-			
+			#fgrad = self.fmaps[-1]
+			#fgrad[fgrad > 0] = 1
+			#new_grad_out = new_grad_out * fgrad
+			#del self.fmaps[-1]
 			return (new_grad_out,)
             
 		modules = list(self.model.features._modules.items())
-
 		hooks = []
 		for name, module in modules:
 			if isinstance(module, nn.ReLU):
-				hooks.append(module.register_forward_hook(forward_hook_fn))
+				#hooks.append(module.register_forward_hook(forward_hook_fn))
 				hooks.append(module.register_backward_hook(backward_hook_fn))
-
 		fLayer = modules[0][1] 
 		hooks.append(fLayer.register_backward_hook(first_layer_hook_fn))
 
 		image = self.getAndPreprocessImage(image_url)
 		image.requires_grad = True
-		
 		self.model.zero_grad()
 		output = self.model(image)
-
 		index = output.argmax().cpu().item()
 		output[0][index].backward()
 		
@@ -348,16 +341,19 @@ SHARK = 'https://upload.wikimedia.org/wikipedia/commons/5/56/White_shark.jpg'
 IG = 'https://cdn-images-1.medium.com/max/500/1*3Lf6qSSgaBhjAZTOxkPvdw.png'
 SKY = 'https://www.metoffice.gov.uk/binaries/content/gallery/metofficegovuk/hero-images/weather/cloud/cumulus-cloud.jpg'
 UN = 'https://static.interestingengineering.com/images/APRIL/sizes/black_hole_resize_md.jpg'
-ML = 'https://povijest.hr/wp-content/uploads/2016/08/lisa.jpg'
-#543 dumbell, 2 shark
+TIGER = 'http://www.jaypalkibabatours.com/wp-content/uploads/2015/09/wildlife.jpg'
+BTF = 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQSbW6G7WpmkvEZtAg1ubMTF4NDDcUGXjCW78n7Ul0sIFQYebU7'
+DOG = 'http://dogtrainingpro.us/wp-content/uploads/2017/03/dog-training-pro-puppy-biting-224x224.jpg'
+SPORTCAR = 'https://amp.businessinsider.com/images/5b32b3331ae66249008b58ad-750-563.jpg'
+#543 dumbell
 
 v = VggVisualizer()
-v.classModelVisualization(543)
-v.saliencyMap(ML)
-v.guidedBackpropagation(ML)
-v.classActivationMap(ML)
+#v.classModelVisualization(543)
+#v.saliencyMap(DOG)
+v.guidedBackpropagation(SPORTCAR)
+#v.classActivationMap(ML)
 #v.layerVisualization(22)
 #v.layerVisualization(22, 11)
-showConvLayers(v)
-showLayerFilters(v, 5)
-deepDreamConv(v, ML)
+#showConvLayers(v)
+#showLayerFilters(v, 5)
+#deepDreamConv(v, ML)
