@@ -166,7 +166,7 @@ class VggVisualizer:
 			hook.remove()
 		
 		
-	def classActivationMap(self, image_url):
+	def classActivationMap(self, image_url, n=1):
 		self.activations = None
 		self.gradients = None
 		
@@ -183,45 +183,42 @@ class VggVisualizer:
 		image = self.getAndPreprocessImage(image_url)
 		output = self.model(image)
 		
-		topres = torch.topk(output, 4)
-		scores = topres[0].cpu().detach().numpy()[0]
-		indexes = topres[1].cpu().detach().numpy()[0]
+		topres = torch.topk(output, n)
+		index = topres[1].cpu().detach().numpy()[0][n-1]
+		object = self.labels[index]
 		
 		fig = plt.figure(1, figsize=(10, 6))
-		fig.suptitle('class activation map, top 4', fontsize=15)
-		grid = ImageGrid(fig, 111, nrows_ncols=(4, 2), axes_pad=(2, 0.3))
+		fig.suptitle('class activation map for ' + object, fontsize=15)
+		grid = ImageGrid(fig, 111, nrows_ncols=(1, 2), axes_pad=(2, 0.3))
 		
-		for i in range(4):
-			output = self.model(image)
-			self.model.zero_grad()
-			output[:, indexes[i]].backward()
-			pooled_gradients = torch.mean(self.gradients, dim=[0, 2, 3])
+		self.model.zero_grad()
+		output[:, index].backward()
+		pooled_gradients = torch.mean(self.gradients, dim=[0, 2, 3])
 
-			for j in range(512):
-				self.activations[:, j, :, :] *= pooled_gradients[j]
-				
-			heatmap = torch.mean(self.activations, dim=1).squeeze()
-
-			heatmap = heatmap.clamp(min=0)
-			heatmap /= torch.max(heatmap)
-			#plt.imshow(heatmap)
-				
-			#image = Image.open(io.BytesIO(requests.get(image_url).content)).convert('RGB')
-			#image = np.array(image)
-			imageAlt = unNormalizeImage(image.cpu().detach().squeeze().numpy().transpose((1, 2, 0)))*255
-			imageAlt = imageAlt.astype(int)
-			heatmap = cv2.resize(heatmap.cpu().detach().numpy(), (imageAlt.shape[1], imageAlt.shape[0]))
-			#heatmap[heatmap < 0.6] = 0
-			heatmap = 255-np.uint8(255*heatmap)
-			heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
-			grid[2*i].set_title('Heatmap for: ' + self.labels[indexes[i]])
-			grid[2*i].imshow(heatmap)
+		for j in range(512):
+			self.activations[:, j, :, :] *= pooled_gradients[j]
 			
-			superimposed_img = heatmap*0.4 + imageAlt
-			superimposed_img = superimposed_img.astype(int)
+		heatmap = torch.mean(self.activations, dim=1).squeeze()
 
-			grid[2*i+1].set_title(self.labels[indexes[i]])
-			grid[2*i+1].imshow(superimposed_img)
+		heatmap = heatmap.clamp(min=0)
+		heatmap /= torch.max(heatmap)
+		#plt.imshow(heatmap)
+			
+		#image = Image.open(io.BytesIO(requests.get(image_url).content)).convert('RGB')
+		#image = np.array(image)
+		imageAlt = unNormalizeImage(image.cpu().detach().squeeze().numpy().transpose((1, 2, 0)))*255
+		imageAlt = imageAlt.astype(int)
+		heatmap = cv2.resize(heatmap.cpu().detach().numpy(), (imageAlt.shape[1], imageAlt.shape[0]))
+		#heatmap[heatmap < 0.6] = 0
+		heatmap = 255-np.uint8(255*heatmap)
+		heatmap = cv2.applyColorMap(heatmap, cv2.COLORMAP_JET)
+		grid[0].set_title('Heatmap')
+		grid[0].imshow(heatmap)
+		
+		superimposed_img = heatmap*0.4 + imageAlt
+		superimposed_img = superimposed_img.astype(int)
+
+		grid[1].imshow(superimposed_img)
 		plt.show()
 		hook_fw.remove()
 		hook_bck.remove()
@@ -350,8 +347,8 @@ SPORTCAR = 'https://amp.businessinsider.com/images/5b32b3331ae66249008b58ad-750-
 v = VggVisualizer()
 #v.classModelVisualization(543)
 #v.saliencyMap(DOG)
-v.guidedBackpropagation(SPORTCAR)
-#v.classActivationMap(ML)
+#v.guidedBackpropagation(SPORTCAR)
+v.classActivationMap(DOG)
 #v.layerVisualization(22)
 #v.layerVisualization(22, 11)
 #showConvLayers(v)
